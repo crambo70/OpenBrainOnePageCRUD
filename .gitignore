@@ -1,0 +1,13 @@
+# Credentials — never commit
+credentials.txt
+.env
+.env.local
+.env*.local
+
+# Claude Code session files
+.claude/
+
+# OS noise
+.DS_Store
+Thumbs.db
+desktop.ini

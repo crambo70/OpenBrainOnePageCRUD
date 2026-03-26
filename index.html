@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Open Brain</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0f1117;
+      --surface:  #1a1d27;
+      --surface2: #242736;
+      --border:   #2e3145;
+      --text:     #e2e8f0;
+      --muted:    #6b7280;
+      --accent:   #6366f1;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Header ── */
+    header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 12px 20px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    header h1 { font-size: 18px; font-weight: 600; color: var(--accent); }
+    #stats     { font-size: 13px; color: var(--muted); flex: 1; }
+
+    /* ── Filter bar ── */
+    .filter-bar {
+      display: flex;
+      gap: 8px;
+      padding: 10px 20px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .filter-bar input,
+    .filter-bar select {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 13px;
+      outline: none;
+    }
+    .filter-bar input:focus,
+    .filter-bar select:focus { border-color: var(--accent); }
+    .filter-bar select option { background: var(--surface2); }
+
+    /* ── Main layout ── */
+    .main { display: flex; flex: 1; overflow: hidden; }
+
+    /* ── Thought list ── */
+    .list-col {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      overflow: hidden;
+    }
+    .thought-list { flex: 1; overflow-y: auto; padding: 12px; }
+
+    .thought-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 14px;
+      margin-bottom: 8px;
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    .thought-card:hover  { border-color: var(--accent); }
+    .thought-card.active { border-color: var(--accent); background: var(--surface2); }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 6px;
+      flex-wrap: wrap;
+    }
+    .card-date { font-size: 12px; color: var(--muted); margin-left: auto; white-space: nowrap; }
+    .card-preview {
+      font-size: 13px;
+      color: #94a3b8;
+      line-height: 1.5;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+
+    /* ── Type badges ── */
+    .type-badge {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      flex-shrink: 0;
+    }
+    .badge-observation { background: rgba(59,130,246,.2);  color: #60a5fa; }
+    .badge-task        { background: rgba(245,158,11,.2);  color: #fbbf24; }
+    .badge-reference   { background: rgba(139,92,246,.2);  color: #a78bfa; }
+    .badge-progress    { background: rgba(16,185,129,.2);  color: #34d399; }
+    .badge-person_note { background: rgba(244,63,94,.2);   color: #fb7185; }
+
+    /* ── Topic chips ── */
+    .topic-chip {
+      font-size: 11px;
+      padding: 2px 7px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--muted);
+      cursor: pointer;
+      transition: border-color 0.1s, color 0.1s;
+    }
+    .topic-chip:hover { border-color: var(--accent); color: var(--text); }
+
+    /* ── Pagination ── */
+    .pagination {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      padding: 10px 12px;
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    /* ── Detail panel ── */
+    .detail-panel {
+      width: 480px;
+      background: var(--surface);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+    .detail-panel.hidden { display: none; }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .panel-body   { flex: 1; overflow-y: auto; padding: 16px; }
+    .panel-footer {
+      display: flex;
+      gap: 8px;
+      padding: 12px 16px;
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    /* ── Form fields ── */
+    .field-group { margin-bottom: 16px; }
+    .field-group label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 6px;
+    }
+    .field-group input,
+    .field-group select,
+    .field-group textarea {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 8px 10px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+      resize: vertical;
+    }
+    .field-group textarea  { min-height: 300px; line-height: 1.65; }
+    .field-group input:focus,
+    .field-group select:focus,
+    .field-group textarea:focus { border-color: var(--accent); }
+    .field-group select option { background: var(--surface2); }
+
+    /* ── Buttons ── */
+    button {
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 500;
+      padding: 7px 14px;
+      border-radius: 6px;
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    button:hover  { opacity: 0.82; }
+    button:active { opacity: 0.65; }
+    button:disabled { opacity: 0.35; cursor: default; }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-danger  { background: #ef4444;       color: #fff; }
+    .btn-ghost   { background: var(--surface2); color: var(--text); border-color: var(--border); }
+    .btn-sm      { padding: 4px 10px; font-size: 12px; }
+
+    /* ── Modal ── */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+    .modal-overlay.hidden { display: none; }
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      width: 560px;
+      max-height: 85vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .modal-header {
+      display: flex;
+      align-items: center;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+    }
+    .modal-header h2  { font-size: 15px; font-weight: 600; flex: 1; }
+    .modal-body       { padding: 16px 18px; overflow-y: auto; }
+    .modal-footer     { display: flex; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--border); }
+
+    /* ── Toast ── */
+    #toast {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--text);
+      z-index: 200;
+      transition: opacity 0.3s;
+    }
+    #toast.hidden  { opacity: 0; pointer-events: none; }
+    #toast.success { border-color: #10b981; color: #34d399; }
+    #toast.error   { border-color: #ef4444; color: #f87171; }
+
+    /* ── Misc ── */
+    .empty   { text-align: center; padding: 60px 20px; color: var(--muted); font-size: 14px; }
+    .spinner { text-align: center; padding: 40px; color: var(--muted); }
+    ::-webkit-scrollbar       { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ── -->
+<header>
+  <h1>Open Brain</h1>
+  <span id="stats">Loading...</span>
+  <button class="btn-primary" id="btn-new">+ New Thought</button>
+</header>
+
+<!-- ── Filter bar ── -->
+<div class="filter-bar">
+  <select id="filter-type">
+    <option value="">All types</option>
+    <option value="observation">Observation</option>
+    <option value="task">Task</option>
+    <option value="reference">Reference</option>
+    <option value="progress">Progress</option>
+    <option value="person_note">Person Note</option>
+  </select>
+  <input id="filter-topic"  type="text" placeholder="Topic..."          style="width:160px">
+  <input id="filter-person" type="text" placeholder="Person..."         style="width:160px">
+  <input id="filter-search" type="text" placeholder="Search content..." style="width:220px">
+  <button class="btn-ghost btn-sm" id="btn-clear">Clear</button>
+</div>
+
+<!-- ── Main ── -->
+<div class="main">
+
+  <!-- List column -->
+  <div class="list-col">
+    <div class="thought-list" id="thought-list">
+      <div class="spinner">Loading thoughts...</div>
+    </div>
+    <div class="pagination" id="pagination"></div>
+  </div>
+
+  <!-- Detail / edit panel -->
+  <div class="detail-panel hidden" id="detail-panel">
+    <div class="panel-header">
+      <span id="panel-badge" class="type-badge"></span>
+      <span id="panel-date" style="font-size:12px;color:var(--muted);margin-left:8px"></span>
+      <button class="btn-ghost btn-sm" style="margin-left:auto" id="btn-close-panel">✕</button>
+    </div>
+    <div class="panel-body">
+      <div class="field-group">
+        <label>Type</label>
+        <select id="edit-type">
+          <option value="observation">Observation</option>
+          <option value="task">Task</option>
+          <option value="reference">Reference</option>
+          <option value="progress">Progress</option>
+          <option value="person_note">Person Note</option>
+        </select>
+      </div>
+      <div class="field-group">
+        <label>Topics <span style="font-weight:400;text-transform:none;letter-spacing:0">(comma-separated)</span></label>
+        <input id="edit-topics" type="text" placeholder="Nagios, CLI, Infrastructure">
+      </div>
+      <div class="field-group">
+        <label>People <span style="font-weight:400;text-transform:none;letter-spacing:0">(comma-separated)</span></label>
+        <input id="edit-people" type="text" placeholder="Cameron, Nicole">
+      </div>
+      <div class="field-group">
+        <label>Content</label>
+        <textarea id="edit-content"></textarea>
+      </div>
+    </div>
+    <div class="panel-footer">
+      <button class="btn-primary" id="btn-save">Save</button>
+      <button class="btn-danger"  id="btn-delete">Delete</button>
+    </div>
+  </div>
+
+</div><!-- /.main -->
+
+<!-- ── New thought modal ── -->
+<div class="modal-overlay hidden" id="new-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>New Thought</h2>
+      <button class="btn-ghost btn-sm" id="btn-close-new">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="field-group">
+        <label>Type</label>
+        <select id="new-type">
+          <option value="observation">Observation</option>
+          <option value="task">Task</option>
+          <option value="reference">Reference</option>
+          <option value="progress">Progress</option>
+          <option value="person_note">Person Note</option>
+        </select>
+      </div>
+      <div class="field-group">
+        <label>Topics</label>
+        <input id="new-topics" type="text" placeholder="topic1, topic2">
+      </div>
+      <div class="field-group">
+        <label>People</label>
+        <input id="new-people" type="text" placeholder="Name1, Name2">
+      </div>
+      <div class="field-group">
+        <label>Content</label>
+        <textarea id="new-content" style="min-height:200px" placeholder="What's on your mind?"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-primary" id="btn-create">Save</button>
+      <button class="btn-ghost"   id="btn-cancel-new">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Setup / credentials modal ── -->
+<div class="modal-overlay" id="setup-modal">
+  <div class="modal" style="width:480px">
+    <div class="modal-header"><h2>Connect to Supabase</h2></div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.6">
+        Enter your Supabase project credentials. These are stored in <code style="color:var(--text)">localStorage</code> and never leave your browser.
+      </p>
+      <div class="field-group">
+        <label>Supabase URL</label>
+        <input id="setup-url" type="text" placeholder="https://your-project.supabase.co">
+      </div>
+      <div class="field-group">
+        <label>Anon Key</label>
+        <input id="setup-key" type="password" placeholder="eyJhbGci...">
+      </div>
+      <p id="setup-error" style="font-size:12px;color:#f87171;display:none;margin-top:8px"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-primary" id="btn-setup-save">Connect</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Delete confirm modal ── -->
+<div class="modal-overlay hidden" id="confirm-modal">
+  <div class="modal" style="width:340px">
+    <div class="modal-header"><h2>Delete this thought?</h2></div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:var(--muted);line-height:1.6">
+        This cannot be undone. The record will be permanently removed from Supabase.
+      </p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-danger" id="btn-confirm-delete">Delete</button>
+      <button class="btn-ghost"  id="btn-cancel-delete">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Toast ── -->
+<div id="toast" class="hidden"></div>
+
+<script>
+// ── Credentials (stored in localStorage, never hardcoded) ────────────────────
+function getCredentials() {
+  return {
+    url:    localStorage.getItem('ob_supabase_url'),
+    key:    localStorage.getItem('ob_anon_key'),
+  };
+}
+
+function saveCredentials(url, key) {
+  localStorage.setItem('ob_supabase_url', url);
+  localStorage.setItem('ob_anon_key', key);
+}
+
+function clearCredentials() {
+  localStorage.removeItem('ob_supabase_url');
+  localStorage.removeItem('ob_anon_key');
+}
+
+let db;
+
+function initClient() {
+  const { url, key } = getCredentials();
+  const { createClient } = supabase;
+  db = createClient(url, key);
+}
+
+const PAGE_SIZE = 25;
+let allThoughts     = [];
+let filtered        = [];
+let currentPage     = 0;
+let activeId        = null;
+let pendingDeleteId = null;
+
+// ── Boot ─────────────────────────────────────────────────────────────────────
+async function init() {
+  const { url, key } = getCredentials();
+  if (!url || !key) {
+    document.getElementById('setup-modal').classList.remove('hidden');
+    return;
+  }
+  initClient();
+
+  const { data, error } = await db
+    .from('thoughts')
+    .select('id,content,metadata,created_at,updated_at')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    const el = document.getElementById('thought-list');
+    el.textContent = 'Failed to load: ' + error.message;
+    el.className = 'empty';
+    return;
+  }
+  allThoughts = data;
+  applyFilters();
+  renderStats();
+}
+
+// ── Stats ─────────────────────────────────────────────────────────────────────
+function renderStats() {
+  const counts = {};
+  allThoughts.forEach(t => {
+    const type = t.metadata?.type || 'unknown';
+    counts[type] = (counts[type] || 0) + 1;
+  });
+  const breakdown = Object.entries(counts)
+    .sort((a, b) => b[1] - a[1])
+    .map(([k, v]) => `${v} ${k.replace('_', ' ')}`)
+    .join(' · ');
+  document.getElementById('stats').textContent =
+    `${allThoughts.length} thoughts  ·  ${breakdown}`;
+}
+
+// ── Filters ───────────────────────────────────────────────────────────────────
+function applyFilters() {
+  const type   = document.getElementById('filter-type').value;
+  const topic  = document.getElementById('filter-topic').value.toLowerCase().trim();
+  const person = document.getElementById('filter-person').value.toLowerCase().trim();
+  const search = document.getElementById('filter-search').value.toLowerCase().trim();
+
+  filtered = allThoughts.filter(t => {
+    const m = t.metadata || {};
+    if (type   && m.type !== type) return false;
+    if (topic  && !(m.topics  || []).some(x => x.toLowerCase().includes(topic)))  return false;
+    if (person && !(m.people  || []).some(x => x.toLowerCase().includes(person))) return false;
+    if (search && !t.content.toLowerCase().includes(search)) return false;
+    return true;
+  });
+
+  currentPage = 0;
+  renderList();
+}
+
+function clearFilters() {
+  ['filter-type', 'filter-topic', 'filter-person', 'filter-search']
+    .forEach(id => { document.getElementById(id).value = ''; });
+  applyFilters();
+}
+
+// ── Render list (DOM-based, no raw innerHTML for user content) ────────────────
+function renderList() {
+  const container = document.getElementById('thought-list');
+  container.textContent = ''; // clear safely
+
+  if (filtered.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'empty';
+    empty.textContent = 'No thoughts match your filters.';
+    container.appendChild(empty);
+    document.getElementById('pagination').textContent = '';
+    return;
+  }
+
+  const start = currentPage * PAGE_SIZE;
+  const page  = filtered.slice(start, start + PAGE_SIZE);
+
+  const frag = document.createDocumentFragment();
+  page.forEach(t => frag.appendChild(buildCard(t)));
+  container.appendChild(frag);
+
+  renderPagination();
+}
+
+function buildCard(t) {
+  const m      = t.metadata || {};
+  const type   = m.type || 'observation';
+  const topics = (m.topics || []).slice(0, 6);
+
+  const card = document.createElement('div');
+  card.className = 'thought-card' + (t.id === activeId ? ' active' : '');
+  card.addEventListener('click', () => selectThought(t.id));
+
+  // Header row
+  const header = document.createElement('div');
+  header.className = 'card-header';
+
+  const badge = document.createElement('span');
+  badge.className = `type-badge badge-${type}`;
+  badge.textContent = type.replace('_', ' ');
+  header.appendChild(badge);
+
+  topics.forEach(tp => {
+    const chip = document.createElement('span');
+    chip.className = 'topic-chip';
+    chip.textContent = tp;
+    chip.addEventListener('click', e => {
+      e.stopPropagation();
+      document.getElementById('filter-topic').value = tp;
+      applyFilters();
+    });
+    header.appendChild(chip);
+  });
+
+  const date = document.createElement('span');
+  date.className = 'card-date';
+  date.textContent = fmtDate(t.created_at);
+  header.appendChild(date);
+
+  // Preview
+  const preview = document.createElement('div');
+  preview.className = 'card-preview';
+  preview.textContent = t.content.replace(/\n+/g, ' ').substring(0, 180);
+
+  card.appendChild(header);
+  card.appendChild(preview);
+  return card;
+}
+
+function renderPagination() {
+  const total = filtered.length;
+  const pages = Math.ceil(total / PAGE_SIZE);
+  const pg    = document.getElementById('pagination');
+  pg.textContent = '';
+
+  if (pages <= 1) {
+    const info = document.createElement('span');
+    info.style.cssText = 'font-size:13px;color:var(--muted)';
+    info.textContent = `${total} result${total !== 1 ? 's' : ''}`;
+    pg.appendChild(info);
+    return;
+  }
+
+  const prev = document.createElement('button');
+  prev.className = 'btn-ghost btn-sm';
+  prev.textContent = '← Prev';
+  prev.disabled = currentPage === 0;
+  prev.addEventListener('click', () => goPage(currentPage - 1));
+
+  const info = document.createElement('span');
+  info.style.cssText = 'font-size:13px;color:var(--muted)';
+  info.textContent = `Page ${currentPage + 1} / ${pages}  ·  ${total} results`;
+
+  const next = document.createElement('button');
+  next.className = 'btn-ghost btn-sm';
+  next.textContent = 'Next →';
+  next.disabled = currentPage >= pages - 1;
+  next.addEventListener('click', () => goPage(currentPage + 1));
+
+  pg.appendChild(prev);
+  pg.appendChild(info);
+  pg.appendChild(next);
+}
+
+function goPage(n) {
+  currentPage = n;
+  renderList();
+  document.getElementById('thought-list').scrollTop = 0;
+}
+
+// ── Detail panel ──────────────────────────────────────────────────────────────
+function selectThought(id) {
+  activeId = id;
+  const t = allThoughts.find(x => x.id === id);
+  if (!t) return;
+  const m = t.metadata || {};
+
+  document.getElementById('detail-panel').classList.remove('hidden');
+  document.getElementById('panel-badge').textContent = (m.type || '').replace('_', ' ');
+  document.getElementById('panel-badge').className   = `type-badge badge-${m.type || 'observation'}`;
+  document.getElementById('panel-date').textContent  = fmtDateTime(t.created_at);
+  document.getElementById('edit-type').value         = m.type || 'observation';
+  document.getElementById('edit-topics').value       = (m.topics || []).join(', ');
+  document.getElementById('edit-people').value       = (m.people || []).join(', ');
+  document.getElementById('edit-content').value      = t.content;
+
+  renderList();
+}
+
+function closePanel() {
+  activeId = null;
+  document.getElementById('detail-panel').classList.add('hidden');
+  renderList();
+}
+
+// ── Update ────────────────────────────────────────────────────────────────────
+async function saveThought() {
+  const t = allThoughts.find(x => x.id === activeId);
+  if (!t) return;
+
+  const content = document.getElementById('edit-content').value.trim();
+  const type    = document.getElementById('edit-type').value;
+  const topics  = parseList(document.getElementById('edit-topics').value);
+  const people  = parseList(document.getElementById('edit-people').value);
+  const newMeta = { ...t.metadata, type, topics, people };
+
+  const { error } = await db
+    .from('thoughts')
+    .update({ content, metadata: newMeta, updated_at: new Date().toISOString() })
+    .eq('id', activeId);
+
+  if (error) { showToast('Save failed: ' + error.message, 'error'); return; }
+
+  const idx = allThoughts.findIndex(x => x.id === activeId);
+  allThoughts[idx] = { ...t, content, metadata: newMeta };
+
+  showToast('Saved.', 'success');
+  applyFilters();
+  renderStats();
+  selectThought(activeId);
+}
+
+// ── Delete ────────────────────────────────────────────────────────────────────
+function promptDelete() {
+  pendingDeleteId = activeId;
+  document.getElementById('confirm-modal').classList.remove('hidden');
+}
+
+async function confirmDelete() {
+  document.getElementById('confirm-modal').classList.add('hidden');
+  const { error } = await db.from('thoughts').delete().eq('id', pendingDeleteId);
+  if (error) { showToast('Delete failed: ' + error.message, 'error'); return; }
+
+  allThoughts = allThoughts.filter(x => x.id !== pendingDeleteId);
+  pendingDeleteId = null;
+  closePanel();
+  showToast('Deleted.', 'success');
+  applyFilters();
+  renderStats();
+}
+
+// ── Create ────────────────────────────────────────────────────────────────────
+function openNewModal() {
+  document.getElementById('new-modal').classList.remove('hidden');
+  setTimeout(() => document.getElementById('new-content').focus(), 50);
+}
+
+function closeNewModal() {
+  document.getElementById('new-modal').classList.add('hidden');
+  ['new-content', 'new-topics', 'new-people'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('new-type').value = 'observation';
+}
+
+async function createThought() {
+  const content = document.getElementById('new-content').value.trim();
+  if (!content) { showToast('Content is required.', 'error'); return; }
+
+  const type    = document.getElementById('new-type').value;
+  const topics  = parseList(document.getElementById('new-topics').value);
+  const people  = parseList(document.getElementById('new-people').value);
+  const metadata = { type, topics, people, source: 'viewer', action_items: [], dates_mentioned: [] };
+
+  const { data, error } = await db
+    .from('thoughts')
+    .insert({ content, metadata })
+    .select('id,content,metadata,created_at,updated_at')
+    .single();
+
+  if (error) { showToast('Create failed: ' + error.message, 'error'); return; }
+
+  allThoughts.unshift(data);
+  closeNewModal();
+  showToast('Thought saved.', 'success');
+  applyFilters();
+  renderStats();
+  selectThought(data.id);
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function parseList(str) {
+  return str.split(',').map(s => s.trim()).filter(Boolean);
+}
+
+function fmtDate(iso) {
+  return new Date(iso).toLocaleDateString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric'
+  });
+}
+
+function fmtDateTime(iso) {
+  return new Date(iso).toLocaleString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: 'numeric', minute: '2-digit'
+  });
+}
+
+let toastTimer;
+function showToast(msg, type = '') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className   = type;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.add('hidden'), 3000);
+}
+
+// ── Setup modal ───────────────────────────────────────────────────────────────
+document.getElementById('btn-setup-save').addEventListener('click', async () => {
+  const url = document.getElementById('setup-url').value.trim();
+  const key = document.getElementById('setup-key').value.trim();
+  const err = document.getElementById('setup-error');
+  if (!url || !key) { err.textContent = 'Both fields are required.'; err.style.display='block'; return; }
+  saveCredentials(url, key);
+  document.getElementById('setup-modal').classList.add('hidden');
+  err.style.display = 'none';
+  await init();
+});
+
+// ── Wire up static buttons ────────────────────────────────────────────────────
+document.getElementById('btn-new').addEventListener('click', openNewModal);
+document.getElementById('btn-clear').addEventListener('click', clearFilters);
+document.getElementById('btn-close-panel').addEventListener('click', closePanel);
+document.getElementById('btn-save').addEventListener('click', saveThought);
+document.getElementById('btn-delete').addEventListener('click', promptDelete);
+document.getElementById('btn-close-new').addEventListener('click', closeNewModal);
+document.getElementById('btn-cancel-new').addEventListener('click', closeNewModal);
+document.getElementById('btn-create').addEventListener('click', createThought);
+document.getElementById('btn-confirm-delete').addEventListener('click', confirmDelete);
+document.getElementById('btn-cancel-delete').addEventListener('click', () => {
+  document.getElementById('confirm-modal').classList.add('hidden');
+});
+
+['filter-type', 'filter-topic', 'filter-person', 'filter-search'].forEach(id => {
+  document.getElementById(id).addEventListener('input', applyFilters);
+  document.getElementById(id).addEventListener('change', applyFilters);
+});
+
+// Click outside modal to close
+document.getElementById('new-modal').addEventListener('click', e => {
+  if (e.target === document.getElementById('new-modal')) closeNewModal();
+});
+document.getElementById('confirm-modal').addEventListener('click', e => {
+  if (e.target === document.getElementById('confirm-modal'))
+    document.getElementById('confirm-modal').classList.add('hidden');
+});
+
+// Escape key
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  closePanel();
+  closeNewModal();
+  document.getElementById('confirm-modal').classList.add('hidden');
+});
+
+// ── Go ────────────────────────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>
