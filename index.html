@@ -290,6 +290,7 @@
 <header>
   <h1>Open Brain</h1>
   <span id="stats">Loading...</span>
+  <button class="btn-ghost" id="btn-export">↓ Export JSON</button>
   <button class="btn-primary" id="btn-new">+ New Thought</button>
 </header>
 
@@ -799,7 +800,23 @@ document.getElementById('btn-setup-save').addEventListener('click', async () => 
   await init();
 });
 
+// ── Export ────────────────────────────────────────────────────────────────────
+function exportJSON() {
+  const data = allThoughts.map(({ id, content, metadata, created_at, updated_at }) =>
+    ({ id, content, metadata, created_at, updated_at }));
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  const date = new Date().toISOString().slice(0, 10);
+  a.href     = url;
+  a.download = `open-brain-backup-${date}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast(`Exported ${data.length} thoughts.`, 'success');
+}
+
 // ── Wire up static buttons ────────────────────────────────────────────────────
+document.getElementById('btn-export').addEventListener('click', exportJSON);
 document.getElementById('btn-new').addEventListener('click', openNewModal);
 document.getElementById('btn-clear').addEventListener('click', clearFilters);
 document.getElementById('btn-close-panel').addEventListener('click', closePanel);
